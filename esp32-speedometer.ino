@@ -10,9 +10,10 @@
 BluetoothSerial SerialBT;
 arduinoFFT FFT;
 
+const int analogInput = 2; // ADC2-2
 int messageCounter = 0;
 int sampleCounter;
-const uint16_t samples = 1024; // max value for Arduino nano (already exceeds ram by 206 bytes, but still runs)
+const uint16_t samples = 1024;
 double vReal[samples];
 double vImag[samples];
 unsigned int delayUs;
@@ -20,6 +21,14 @@ const double samplingFrequency = 1000;  // Hz
 char message[64];
 char mac[7];
 const char compile_version[] = __DATE__ " " __TIME__;
+int64_t microSecondsSinceBoot;
+int64_t lastSampleTime = 0;
+int64_t nextDelay;
+
+void output(char* message) {
+  Serial.print (message);
+  SerialBT.print (message);
+}
 
 void setup() {
   // put your setup code here, to run once:
@@ -27,7 +36,7 @@ void setup() {
   while (!Serial);
 
   if (SerialBT.begin("ESP32test")) {   // sets Bluetooth device name
-    Serial.println ("SerialBT.begin successful.");
+    output ("SerialBT.begin successful.\n");
   }
 
   // some initialization stuff
@@ -44,9 +53,6 @@ void setup() {
     vReal[i] = int8_t((50.0 * (sin((i * (twoPi * cycles)) / samples))) / 2.0);
     vImag[i] = 0.0;
   }
-  delay (2000);
-  sprintf (message, ">%s:SB#%03d=%s<\n", mac, 0, __DATE__ " " __TIME__);
-  SerialBT.print(message);
 }
 
 double majorPeak () {
@@ -58,15 +64,24 @@ double majorPeak () {
 
 void loop() {
   // put your main code here, to run repeatedly:
-  vReal[sampleCounter] = analogRead (34);
-
-  if (sampleCounter == 999) {
-    sprintf (message, ">%s:VF#%03d=%f<\n", mac, messageCounter, majorPeak());
-    Serial.print (message);
-    SerialBT.print (message);
-    sampleCounter = -1;
-    messageCounter += 1;
-    delay(1000);
+  microSecondsSinceBoot = esp_timer_get_time();
+  if (microSecondsSinceBoot > 1000 + lastSampleTime)
+  {
+    vReal[sampleCounter] = analogRead (analogInput);
+  
+    if (sampleCounter == 999) {
+      sprintf (message, ">%s:SU#%03d=%f<\n", mac, messageCounter, 0.001 * (microSecondsSinceBoot / 1000));
+      output(message);
+      sprintf (message, ">%s:VF#%03d=%f<\n", mac, messageCounter, majorPeak());
+      output(message);
+      sprintf (message, ">%s:SB#%03d=%s<\n", mac, 0, __DATE__ " " __TIME__);
+      output(message);
+      sampleCounter = -1;
+      messageCounter += 1;
+    }
+    lastSampleTime += 1000;
+    sampleCounter = sampleCounter + 1;
+  } else {
+    delayMicroseconds (10);
   }
-  sampleCounter = sampleCounter + 1;
 }
