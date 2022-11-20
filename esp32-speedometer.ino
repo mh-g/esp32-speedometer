@@ -13,11 +13,12 @@ arduinoFFT FFT;
 const int analogInput = 2; // used IO pin: ADC2-2
 int messageCounter = 0; // counter for SPEED messages
 int sampleCounter; // counter for FFT input samples
+const int outputFrequency = 2; // number of FFTs per second
 const uint16_t samples = 1024; // length of FFT
 double vReal[samples]; // FFT buffer
 double vImag[samples];
 double maxAmplitude = 0.0; // maximum amplitude of the last FFT input gathering cycle
-unsigned int delayUs = 1000000 / samples; // delay between two samples (design: 1024 samples per second)
+unsigned int delayUs = 1000000 / outputFrequency / samples; // delay between two samples (design: 1024 samples per second)
 char message[64]; // buffer for output message preparation
 char mac[7]; // hex representation of the last three bytes of the MAC address
 const char compile_version[] = __DATE__ " " __TIME__;
@@ -35,7 +36,7 @@ void setup() {
   Serial.begin(115200); //sets the baud rate of the UART for serial transmission
   while (!Serial);
 
-  if (SerialBT.begin("ESP32test")) {   // sets Bluetooth device name
+  if (SerialBT.begin("ESP32speedometer")) {   // sets Bluetooth device name
     output ("SerialBT.begin successful.\n");
   }
 
@@ -59,7 +60,7 @@ double majorPeak () {
   FFT.Windowing(vReal, samples, FFT_WIN_TYP_HAMMING, FFT_FORWARD);  /* Weigh data */
   FFT.Compute(vReal, vImag, samples, FFT_FORWARD);
   FFT.ComplexToMagnitude(vReal, vImag, samples);
-  return FFT.MajorPeak(vReal, samples, 1.0 * samples); // sampling frequency: samples filled in 1 second
+  return FFT.MajorPeak(vReal, samples, 1.0 * outputFrequency * samples); // sampling frequency: samples filled in 1 second
 }
 
 void loop() {
@@ -84,7 +85,7 @@ void loop() {
       output(message);
       sprintf (message, ">%s:VA#%03d=%f<\n", mac, messageCounter, maxAmplitude);
       output(message);
-      sprintf (message, ">%s:SB#%03d=%s<\n", mac, 0, __DATE__ " " __TIME__);
+      sprintf (message, ">%s:SB#%03d=%s<\n", mac, messageCounter, __DATE__ " " __TIME__);
       output(message);
       
       // increase message counter (always in the range [0..999])
