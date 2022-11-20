@@ -10,28 +10,28 @@
 BluetoothSerial SerialBT;
 arduinoFFT FFT;
 
-const int analogInput = 2; // ADC2-2
-int messageCounter = 0;
-int sampleCounter;
-const uint16_t samples = 1024;
-double vReal[samples];
+const int analogInput = 2; // used IO pin: ADC2-2
+int messageCounter = 0; // counter for SPEED messages
+int sampleCounter; // counter for FFT input samples
+const uint16_t samples = 1024; // length of FFT
+double vReal[samples]; // FFT buffer
 double vImag[samples];
-unsigned int delayUs;
-const double samplingFrequency = 1000;  // Hz
-char message[64];
-char mac[7];
+double maxAmplitude = 0.0; // maximum amplitude of the last FFT input gathering cycle
+unsigned int delayUs = 1000000 / samples; // delay between two samples (design: 1024 samples per second)
+char message[64]; // buffer for output message preparation
+char mac[7]; // hex representation of the last three bytes of the MAC address
 const char compile_version[] = __DATE__ " " __TIME__;
-int64_t microSecondsSinceBoot;
-int64_t lastSampleTime = 0;
-int64_t nextDelay;
+int64_t microSecondsSinceBoot; // current time
+int64_t lastSampleTime = 0; // time of last sample
 
+// general output function, to easily tailor output to serial and/or bluetooth
 void output(char* message) {
   Serial.print (message);
   SerialBT.print (message);
 }
 
 void setup() {
-  // put your setup code here, to run once:
+  // comms initialization
   Serial.begin(115200); //sets the baud rate of the UART for serial transmission
   while (!Serial);
 
@@ -39,18 +39,17 @@ void setup() {
     output ("SerialBT.begin successful.\n");
   }
 
-  // some initialization stuff
-  FFT = arduinoFFT();
-  delayUs = 1000; // = 1000 Hz
-  sampleCounter = 0;
-
+  // get MAC address
   const uint8_t* point = esp_bt_dev_get_address();
   sprintf(mac, "%02X%02X%02X", (int)point[3], (int)point[4], (int)point[5]);
-  
-// debug code
-  double cycles = 10.0;
+
+  // prepare FFT
+  FFT = arduinoFFT();
+  sampleCounter = 0;
+
+  // sample storage initialization
   for (int i = 0; i < samples; ++i) {
-    vReal[i] = int8_t((50.0 * (sin((i * (twoPi * cycles)) / samples))) / 2.0);
+    vReal[i] = 0.0;
     vImag[i] = 0.0;
   }
 }
@@ -59,29 +58,43 @@ double majorPeak () {
   // measure the performance
   FFT.Compute(vReal, vImag, samples, FFT_FORWARD);
   FFT.ComplexToMagnitude(vReal, vImag, samples);
-  return FFT.MajorPeak(vReal, samples, samplingFrequency);
+  return FFT.MajorPeak(vReal, samples, 1.0 * samples); // sampling frequency: samples filled in 1 second
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
+  // determine if enough time has passed to obtain a new sample value
   microSecondsSinceBoot = esp_timer_get_time();
-  if (microSecondsSinceBoot > 1000 + lastSampleTime)
+  if (microSecondsSinceBoot >= delayUs + lastSampleTime)
   {
+    // get next sample
     vReal[sampleCounter] = analogRead (analogInput);
-  
-    if (sampleCounter == 999) {
+    if (vReal[sampleCounter] > maxAmplitude)
+    {
+      maxAmplitude = vReal[sampleCounter];
+    }
+    sampleCounter = sampleCounter + 1;
+
+    // calculate FFT and output all messages
+    if (sampleCounter == samples) {
       sprintf (message, ">%s:SU#%03d=%f<\n", mac, messageCounter, 0.001 * (microSecondsSinceBoot / 1000));
       output(message);
       sprintf (message, ">%s:VF#%03d=%f<\n", mac, messageCounter, majorPeak());
       output(message);
+      sprintf (message, ">%s:VA#%03d=%f<\n", mac, messageCounter, maxAmplitude);
+      output(message);
       sprintf (message, ">%s:SB#%03d=%s<\n", mac, 0, __DATE__ " " __TIME__);
       output(message);
-      sampleCounter = -1;
+      
+      // increase message counter (always in the range [0..999])
       messageCounter += 1;
+      if (messageCounter == 1000) messageCounter = 0;
+      
+      // reset sample counter and maximum amplitude
+      sampleCounter = 0;
+      maxAmplitude = 0.0;
     }
-    lastSampleTime += 1000;
-    sampleCounter = sampleCounter + 1;
-  } else {
+    lastSampleTime += delayUs;
+  } else { // wait a little more before trying to sample again
     delayMicroseconds (10);
   }
 }
