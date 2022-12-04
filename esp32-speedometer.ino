@@ -36,6 +36,9 @@ void setup() {
   Serial.begin(115200); //sets the baud rate of the UART for serial transmission
   while (!Serial);
 
+  // we can also slow down the CPU a bit to save some mA
+  setCpuFrequencyMhz(80);
+
   if (SerialBT.begin("ESP32speedometer")) {   // sets Bluetooth device name
     output ("SerialBT.begin successful.\n");
   }
@@ -57,7 +60,7 @@ void setup() {
 
 double majorPeak () {
   // measure the performance
-  FFT.Windowing(vReal, samples, FFT_WIN_TYP_HAMMING, FFT_FORWARD);  /* Weigh data */
+  FFT.Windowing(vReal, samples, FFT_WIN_TYP_HAMMING, FFT_FORWARD);  // weigh data
   FFT.Compute(vReal, vImag, samples, FFT_FORWARD);
   FFT.ComplexToMagnitude(vReal, vImag, samples);
   return FFT.MajorPeak(vReal, samples, 1.0 * outputFrequency * samples); // sampling frequency: samples filled in 1 second
