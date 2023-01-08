@@ -135,7 +135,7 @@ void setup() {
 
 double majorPeak () {
   // measure the performance
-  FFT.Windowing(vReal, samples, FFT_WIN_TYP_HAMMING, FFT_FORWARD);  /* Weigh data */
+  FFT.Windowing(vReal, samples, FFT_WIN_TYP_HAMMING, FFT_FORWARD);  // weigh data
   FFT.Compute(vReal, vImag, samples, FFT_FORWARD);
   FFT.ComplexToMagnitude(vReal, vImag, samples);
   return FFT.MajorPeak(vReal, samples, 1.0 * outputFrequency * samples); // sampling frequency: samples filled in 1 second
